@@ -4,9 +4,12 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.core.logging import setup_logging
 from app.api.webhook import router as webhook_router
 
 settings = get_settings()
+
+setup_logging()
 
 
 @asynccontextmanager

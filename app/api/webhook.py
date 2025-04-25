@@ -1,5 +1,6 @@
 import uuid
 import asyncio
+import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -13,12 +14,16 @@ from celery.result import AsyncResult
 
 router = APIRouter()
 
+logger = logging.getLogger(__name__)
+
 
 @router.post("/webhook", response_model=WebhookResponse)
 async def create_webhook(
     webhook: WebhookRequest,
     db_session: AsyncSession = Depends(get_session)
 ):
+    extra = {}
+
     try:
         request_id = str(uuid.uuid4())
         
@@ -29,6 +34,12 @@ async def create_webhook(
             callback_url=str(webhook.callback_url)
         )
         db_session.add(db_webhook)
+
+        extra["webhook_id"] = db_webhook.id
+        extra["callback_url"] = db_webhook.callback_url
+
+        logger.info(f"webhook.create_webhook: Webhook request created. extra={extra}")
+                    
         await db_session.commit()
         await db_session.refresh(db_webhook)
         
@@ -37,6 +48,7 @@ async def create_webhook(
             message=webhook.message,
             callback_url=str(webhook.callback_url)
         )   
+        logger.info(f"webhook.create_webhook: Webhook request processed as a background task. extra={extra}")
         
         return WebhookResponse(
             request_id=db_webhook.id,
@@ -48,6 +60,9 @@ async def create_webhook(
         
     except Exception as e:
         await db_session.rollback()
+
+        logger.error(f"webhook.create_webhook: Failed to process webhook", extra={"error": str(e)})
+
         raise HTTPException(
             status_code=500,
             detail=f"Failed to process webhook: {str(e)}"
@@ -70,15 +85,24 @@ async def get_webhook(webhook_id: str, db_session: AsyncSession = Depends(get_se
         status=webhook.status,
         message=webhook.message,
         response=webhook.response,
+        callback_url=webhook.callback_url,
         created_at=webhook.created_at
     )
 
 
 @router.get("/webhooks", response_model=List[WebhookResponse])
-async def list_webhooks(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100),
+async def list_webhooks(skip: int = Query(0, ge=0), 
+                        limit: int = Query(10, ge=1, le=100),
+                        callback_url: str = Query(None),
                         db_session: AsyncSession = Depends(get_session)) -> List[WebhookResponse]:
+    
+    query = select(WebhookRequestModel)
+    
+    if callback_url:
+        query = query.where(WebhookRequestModel.callback_url == callback_url)
+    
     result = await db_session.execute(
-        select(WebhookRequestModel)
+        query
         .offset(skip)
         .limit(limit)
         .order_by(WebhookRequestModel.created_at.desc())
@@ -91,7 +115,7 @@ async def list_webhooks(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1,
             status=webhook.status,
             message=webhook.message,
             response=webhook.response,
-            task_id=None,
+            callback_url=webhook.callback_url,
             created_at=webhook.created_at
         )
         for webhook in webhooks
