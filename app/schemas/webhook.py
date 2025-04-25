@@ -11,7 +11,8 @@ class WebhookRequest(BaseModel):
 class WebhookResponse(BaseModel):
     request_id: str = Field(..., description="Unique identifier for the webhook request")
     status: str = Field(..., description="Status of the webhook processing")
-    message: Optional[str] = Field(None, description="Response message from LLM")
+    message: Optional[str] = Field(None, description="Text message to be processed by LLM")
+    response: Optional[str] = Field(None, description="Response message from LLM")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

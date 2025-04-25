@@ -12,41 +12,35 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # postgres
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "postgres"
+    POSTGRES_USER: str 
+    POSTGRES_PASSWORD: str 
+    POSTGRES_HOST: str
+    POSTGRES_PORT: int 
+    POSTGRES_DB: str 
 
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # redis
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
+    REDIS_HOST: str 
+    REDIS_PORT: int 
+    REDIS_DB: int 
 
     @property
     def redis_url(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     # celery
-    CELERY_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+    CELERY_URL: str 
+    CELERY_RESULT_BACKEND: str 
 
     # openrouter
-    OPENROUTER_API_KEY: Optional[str] = None
-    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-
-    # security  
-    SECRET_KEY: str = "your-secret-key-here"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    OPENROUTER_API_KEY: str 
+    OPENROUTER_BASE_URL: str 
 
     class Config:
         env_file = ".env"
-        case_sensitive = True
-        extra = "allow"
 
 
 @lru_cache()

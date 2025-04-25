@@ -1,3 +1,5 @@
+import uuid
+import asyncio
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -5,10 +7,9 @@ from app.schemas.webhook import WebhookRequest, WebhookResponse, WebhookCallback
 from app.core.database import get_session
 from app.models.webhook import WebhookRequest as WebhookRequestModel
 from sqlalchemy import select
-import uuid
-from datetime import datetime
 from app.tasks.webhook_tasks import process_webhook
 from celery.result import AsyncResult
+
 
 router = APIRouter()
 
@@ -19,27 +20,30 @@ async def create_webhook(
     db_session: AsyncSession = Depends(get_session)
 ):
     try:
-        # 1. Save webhook to database
+        request_id = str(uuid.uuid4())
+        
         db_webhook = WebhookRequestModel(
+            id=request_id,  
             status="pending",
             message=webhook.message,
-            callback_url=webhook.callback_url
+            callback_url=str(webhook.callback_url)
         )
         db_session.add(db_webhook)
         await db_session.commit()
         await db_session.refresh(db_webhook)
         
-        # 2. Queue the Celery task
         task = process_webhook.delay(
-            request_id=str(db_webhook.id),
+            request_id=request_id,
             message=webhook.message,
-            callback_url=webhook.callback_url
-        )
+            callback_url=str(webhook.callback_url)
+        )   
         
         return WebhookResponse(
-            request_id=str(db_webhook.id),
-            status="pending",
-            task_id=task.id
+            request_id=db_webhook.id,
+            status=db_webhook.status,
+            message=db_webhook.message,
+            response=db_webhook.response,
+            created_at=db_webhook.created_at
         )
         
     except Exception as e:
@@ -64,7 +68,8 @@ async def get_webhook(webhook_id: str, db_session: AsyncSession = Depends(get_se
     return WebhookResponse(
         request_id=webhook.id,
         status=webhook.status,
-        message=webhook.response,
+        message=webhook.message,
+        response=webhook.response,
         created_at=webhook.created_at
     )
 
@@ -84,7 +89,9 @@ async def list_webhooks(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1,
         WebhookResponse(
             request_id=webhook.id,
             status=webhook.status,
-            message=webhook.response,
+            message=webhook.message,
+            response=webhook.response,
+            task_id=None,
             created_at=webhook.created_at
         )
         for webhook in webhooks
@@ -113,9 +120,6 @@ async def delete_webhook(webhook_id: str, db_session: AsyncSession = Depends(get
 
 @router.get("/webhook/{task_id}/status")
 async def get_task_status(task_id: str):
-    """
-    Get the status of a webhook processing task
-    """
     task_result = AsyncResult(task_id)
     
     return {

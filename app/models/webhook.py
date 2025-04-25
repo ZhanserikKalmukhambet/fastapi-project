@@ -18,4 +18,4 @@ class WebhookRequest(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
 
     status: Mapped[str] = mapped_column(String(50), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow) 
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow()) 

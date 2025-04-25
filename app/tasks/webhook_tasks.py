@@ -1,25 +1,15 @@
 import httpx
-from celery import states
-from app.core.celery_app import celery_app
-from app.core.config import get_settings
+import asyncio
+from celery import shared_task
+from app.core.celery_app import app
+from app.utils.helpers import update_webhook_status
 
-settings = get_settings()
 
-@celery_app.task(
-    bind=True,
-    name="tasks.process_webhook",
-    max_retries=3,
-    retry_backoff=True
-)
+@app.task(bind=True, max_retries=3, retry_backoff=True)
 def process_webhook(self, request_id: str, message: str, callback_url: str):
-    """
-    Process webhook request with mock LLM response
-    """
     try:
-        # 1. Mock LLM processing
-        llm_response = "LLM_RESPONSE"
+        llm_response = "LLM_RESPONSE" + " for " + message
         
-        # 2. Send to callback URL
         with httpx.Client() as client:
             response = client.post(
                 callback_url,
@@ -29,33 +19,13 @@ def process_webhook(self, request_id: str, message: str, callback_url: str):
                     "response": llm_response
                 }
             )
-            response.raise_for_status()
+
+            if response.status_code != 200:
+                raise Exception(f"Failed to process webhook: {response.status_code}")
         
-        # 3. Return success result
-        return {
-            "status": "completed",
-            "request_id": request_id,
-            "response": llm_response
-        }
-        
-    except httpx.HTTPError as exc:
-        # Handle callback URL errors
-        self.update_state(
-            state=states.FAILURE,
-            meta={
-                "request_id": request_id,
-                "error": f"Callback URL error: {str(exc)}"
-            }
-        )
+        asyncio.run(update_webhook_status(request_id, "completed", llm_response))
+    except Exception as exc:
+        asyncio.run(update_webhook_status(request_id, "failed", str(exc)))
+
         raise self.retry(exc=exc)
         
-    except Exception as exc:
-        # Handle any other errors
-        self.update_state(
-            state=states.FAILURE,
-            meta={
-                "request_id": request_id,
-                "error": f"Task processing error: {str(exc)}"
-            }
-        )
-        raise exc 
